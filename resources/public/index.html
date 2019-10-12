@@ -7,6 +7,32 @@
   <body>
     <div id="app">
     </div>
+
+    <!-- The core Firebase JS SDK is always required and must be listed first -->
+    <script src="https://www.gstatic.com/firebasejs/7.2.0/firebase-app.js"></script>
+
+    <!-- TODO: Add SDKs for Firebase products that you want to use
+         https://firebase.google.com/docs/web/setup#available-libraries -->
+    <!-- <script src="https://www.gstatic.com/firebasejs/7.2.0/firebase-analytics.js"></script> -->
+    <script src="https://www.gstatic.com/firebasejs/7.2.0/firebase-firestore.js"></script>
+
+    <script>
+     // Your web app's Firebase configuration
+     var firebaseConfig = {
+         apiKey: "AIzaSyCtu6ces2kwGO7NeR7xmUYr4018nX9ePtU",
+         authDomain: "hillchart-91fcf.firebaseapp.com",
+         databaseURL: "https://hillchart-91fcf.firebaseio.com",
+         projectId: "hillchart-91fcf",
+         storageBucket: "hillchart-91fcf.appspot.com",
+         messagingSenderId: "105517798018",
+         appId: "1:105517798018:web:780dd587b02db6b6275a9b",
+         measurementId: "G-VG0YLX56MC"
+     };
+     // Initialize Firebase
+     firebase.initializeApp(firebaseConfig);
+     firebase.analytics();
+    </script>
+
     <script src="cljs-out/dev-main.js" type="text/javascript"></script>
   </body>
 </html>

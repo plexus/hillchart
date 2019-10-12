@@ -2,6 +2,11 @@
   (:require [reagent.core :as r]
             [clojure.string :as str]))
 
+(when (= "" js/document.location.hash)
+  (set! js/document.location.hash (random-uuid)))
+
+(def chart-id (subs js/document.location.hash 1))
+
 (defonce state (r/atom {}))
 
 (def hill-curve [#_M [20 70] ;; start
@@ -53,14 +58,15 @@
 
 (defn nearest-point-on-curve [point curve]
   (let [^:js obj (js/jsBezier.nearestPointOnCurve (xy->js point) (xys->js curve))]
-    (js->xy (.-point obj))))
+    {:point (js->xy (.-point obj))
+     :location (.-location obj)}))
 
 (defn distance-from-curve [point curve]
   (let [^:js obj (js/jsBezier.distanceFromCurve (xy->js point) (xys->js curve))]
     (.-distance obj)))
 
 (defn point-on-curve [curve location]
-  (let [^:js obj (js/jsBezier.pointOnCurve (xys->js curve) location)]
+  (let [^:js obj (js/jsBezier.pointOnCurve (xys->js curve) (- 1 location))] ;; for some reason jsBezier handles this location backwards
     (js->xy obj)))
 
 (defn nearest-point-on-hill [point]
@@ -69,14 +75,32 @@
         d1 (distance-from-curve point c1)
         d2 (distance-from-curve point c2)]
     (if (< d1 d2)
-      (nearest-point-on-curve point c1)
-      (nearest-point-on-curve point c2))))
+      (:point (nearest-point-on-curve point c1))
+      (:point (nearest-point-on-curve point c2)))))
 
+(defn location-on-hill [point]
+  (let [c1 (take 4 hill-curve)
+        c2 (drop 3 hill-curve)
+        d1 (distance-from-curve point c1)
+        d2 (distance-from-curve point c2)]
+    (if (< d1 d2)
+      (/ (:location (nearest-point-on-curve point c1)) 2)
+      (+ (/ (:location (nearest-point-on-curve point c2)) 2) 0.5))))
+
+(defn point-on-hill [location]
+  (let [c1 (take 4 hill-curve)
+        c2 (drop 3 hill-curve)]
+    (if (< location 0.5)
+      (point-on-curve c1 (* location 2))
+      (point-on-curve c2 (* (- location 0.5) 2)))))
 
 (defn rand-dot-color []
-  (let [candidates (remove (set (map :color (:dots @state))) dot-colors)]
-    (or (rand-nth candidates) (rand-nth dot-colors))))
-
+  (let [existing (set (map :color (:dots @state)))
+        color    (get colors (rand-nth dot-colors))]
+    (if (and (some #{color} existing)
+             (seq (remove existing (vals colors))))
+      (recur)
+      color)))
 
 (defn svg-pos [^:js svg e]
   (when svg
@@ -86,6 +110,22 @@
       (let [coord (.matrixTransform pt (.inverse (.getScreenCTM svg)))]
         [(.-x coord) (.-y coord)]))))
 
+(declare save-doc!)
+
+(defn add-new-dot! [_]
+  (swap! state assoc :moving (rand-dot-color)))
+
+(defn place-dot! [_]
+  (when (:moving @state)
+    (swap! state
+           (fn [state]
+             (let [color    (:moving state)
+                   location (location-on-hill (:position state))]
+               (-> state
+                   (update :dots conj {:color color :location location})
+                   (dissoc :moving)))))
+    (save-doc!)))
+
 (r/render
  [(fn []
     [:div
@@ -94,16 +134,19 @@
                :height "500px"
                :viewBox "0 0 200 100"
                :on-mouse-move (fn [e] (swap! state assoc :position (svg-pos @svg e)))
+               ;;:on-click place-dot!
                :ref #(reset! svg %)})
       [:circle
        {:cx 10
         :cy 10
         :r 5
         :style {:fill (rgb->css (colors :red))}
-        :on-click #(swap! state assoc :moving (rand-dot-color))}]
+        :on-click add-new-dot!}]
 
-      [:line {:x1 7 :x2 13 :y1 10 :y2 10 :style {:stroke (rgb->css (colors :black))}}]
-      [:line {:y1 7 :y2 13 :x1 10 :x2 10 :style {:stroke (rgb->css (colors :black))}}]
+      [:line {:x1 7 :x2 13 :y1 10 :y2 10 :style {:stroke (rgb->css (colors :black))}
+              :on-click add-new-dot!}]
+      [:line {:y1 7 :y2 13 :x1 10 :x2 10 :style {:stroke (rgb->css (colors :black))}
+              :on-click add-new-dot!}]
 
       [:path {:d (str "m " (xy->svg (first hill-curve)) " "
                       "C " (xys->svg (rest hill-curve)))
@@ -120,23 +163,18 @@
                      {:cx x
                       :cy y
                       :r 5
-                      :style {:fill (rgb->css (colors moving))
+                      :style {:fill (rgb->css moving)
                               :opacity 0.8}
-                      :on-click #(swap! state
-                                        (fn [state]
-                                          (-> state
-                                              (update :dots conj {:color moving
-                                                                  :position [x y]})
-                                              (dissoc :moving))))})]))
+                      :on-click place-dot!})]))
 
       (doall
-       (for [{:keys [color position] :as dot} (:dots @state)
-             :let [[x y] position]]
+       (for [{:keys [color location] :as dot} (:dots @state)
+             :let [[x y] (point-on-hill location)]]
          ^{:key (pr-str dot)}
          [:circle {:cx x
                    :cy y
                    :r 5
-                   :style {:fill (rgb->css (colors color))
+                   :style {:fill (rgb->css color)
                            :opacity 0.8}
                    :on-click #(swap! state
                                      (fn [state]
@@ -144,7 +182,27 @@
                                            (update :dots (partial remove #{dot}))
                                            (assoc :moving color))))}]))]
 
-     [:pre
-      (pr-str @state) "\n"
-      ]])]
+     #_[:pre
+        (pr-str @state) "\n"
+        ]])]
  (js/document.getElementById "app"))
+
+
+(def ^:js db (js/firebase.firestore))
+(def ^:js fs-charts (.collection db "charts"))
+(def ^:js fs-doc (.doc fs-charts chart-id))
+
+(defn fs->state! [^:js doc]
+  (when (.-exists doc)
+    (reset! state (js->clj (.data doc) :keywordize-keys true))))
+
+(defonce fetch-doc
+  (.then
+   (.get fs-doc)
+   fs->state!))
+
+(defonce setup-listener
+  (.onSnapshot fs-doc fs->state!))
+
+(defn save-doc! []
+  (.set fs-doc (clj->js (select-keys @state [:dots]))))
