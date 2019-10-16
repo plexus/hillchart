@@ -3,3 +3,9 @@
 target
 repl
 scratch.clj
+resources/public/cljs-out/
+hillchart-91fcf-firebase-adminsdk-420vv-094574d603.json
+node_modules
+.firebase
+.shadow-cljs
+functions/index.js
