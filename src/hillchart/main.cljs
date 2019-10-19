@@ -5,7 +5,7 @@
 
 (def ^js jsBezier #_js/jsBezier (.-jsBezier jsbezier))
 
-(defonce state (r/atom {:dot-button? true}))
+(defonce state (r/atom {:dots []}))
 
 (when (exists? js/document)
   (when (= "" js/document.location.hash)
@@ -25,7 +25,6 @@
 
 (def colors
   {:black [44 44 40]
-
    :white [241 242 238]
    :gray1 [200 205 202]
    :gray2 [163 160 150]
@@ -127,7 +126,7 @@
   (update state :dots conj
           {:color (rand-dot-color)
            :position (location-on-hill position)
-           :label "Create MVP"
+           :label "..."
            :moving? true}))
 
 (defn add-new-dot! [_]
@@ -135,7 +134,7 @@
   (save-doc!))
 
 (defn place-dot [state]
-  (update state :dots (partial map #(dissoc % :moving?))))
+  (update state :dots (partial mapv #(dissoc % :moving?))))
 
 (defn place-dot! [e]
   (swap! state place-dot)
@@ -144,10 +143,10 @@
 (defn move-dot [dot state]
   (update state
           :dots
-          (partial map (fn [d]
-                         (if (= d dot)
-                           (assoc d :moving? true)
-                           d)))))
+          (partial mapv (fn [d]
+                          (if (= d dot)
+                            (assoc d :moving? true)
+                            d)))))
 
 (defn move-dot! [{:keys [color] :as dot}]
   (fn [e]
@@ -158,16 +157,19 @@
          (fn [state]
            (update state
                    :dots
-                   (partial map (fn [dot]
-                                  (if (:moving? dot)
-                                    (assoc dot :location (location-on-hill pos))
-                                    dot)))))))
+                   (partial mapv (fn [dot]
+                                   (if (:moving? dot)
+                                     (assoc dot :location (location-on-hill pos))
+                                     dot)))))))
 
 (defn show-markdown-modal! []
-  (swap! state assoc :markdown-modal? true))
+  (swap! state assoc :active-modal :markdown))
 
-(defn hide-markdown-modal! []
-  (swap! state dissoc :markdown-modal?))
+(defn show-labels-modal! []
+  (swap! state assoc :active-modal :labels))
+
+(defn hide-modal! []
+  (swap! state dissoc :active-modal))
 
 (defn Dot [{:keys [color position on-click label]}]
   (let [[x y] position]
@@ -223,7 +225,9 @@
 
 (defn MarkdownButton [x y w]
   [:g {:transform (str "translate(" x "," y ") "
-                       "scale(" (/ w 208) ")")
+                       "scale(" (/ w 575) ")"
+                       )
+
        :on-click show-markdown-modal!}
    [:rect {:width "198"
            :height "118"
@@ -235,11 +239,48 @@
            :fill (rgb->css (colors :white))}]
    [:path {:d "M30 98V30h20l20 25 20-25h20v68H90V59L70 84 50 59v39zm125 0l-30-33h20V30h20v35h20z"}]])
 
-(defn render-markdown []
+(defn LabelButton [x y w]
+  [:g {:transform (str "translate(" x "," y ") "
+                       "scale(" (/ w 110) ")"
+                       )
+       :on-click show-labels-modal!}
+   [:rect {:x 0 :y 0 :width 40 :height 35 :fill "rgba(0,0,0,0)"}]
+   [:circle {:fill "rgb(150,178,107)"
+             :r "5.0270834"
+             :cy "6.2394905"
+             :cx "5.2041292"}]
+   [:circle {:fill "rgb(211,72,44)"
+             :r "5.0270834"
+             :cy "18.062336"
+             :cx "5.2041292"}]
+   [:circle {:fill "rgb(134,190,215)"
+             :r "5.0270834"
+             :cy "29.885197"
+             :cx "5.2041292"}]
+   [:path {:style {:stroke "#000000"
+                   :stroke-width "2"
+                   :stroke-linecap "round"}
+           :d "m 13.652759,6.2394896 h 22.34027"}]
+   [:path {:d "m 13.652759,18.06234 h 22.34027"
+           :style {:stroke "#000000"
+                   :stroke-width "2"
+                   :stroke-linecap "round"}}]
+   [:path {:d "m 13.652759,29.8852 h 22.34027"
+           :style {:stroke "#000000"
+                   :stroke-width "2"
+                   :stroke-linecap "round"}}]])
+
+(defn parse-style [s]
+  (into {}
+        (map (fn [s] (let [[k v](str/split s ":")]
+                       [(keyword k) v])))
+        (str/split s ";")))
+
+(defn render-markdown [chart-id]
   (let [origin js/document.location.origin]
     (str "[![Hillchart](" origin "/" chart-id ".svg)](" origin "/#" chart-id ")")))
 
-(defn MarkdownModal []
+(defn Modal [& children]
   [:div {:style {:position "fixed"
                  :z-index 1
                  :left 0
@@ -247,18 +288,44 @@
                  :width "100%"
                  :height "100%"
                  :background-color "rgba(0,0,0,0.4)"}}
-   [:div {:style {:background-color (rgb->css (colors :white))
-                  :margin "15% auto"
-                  :width "80%"
-                  :padding "20px"
-                  :border (str "1px solid " (rgb->css (colors :black)))}}
-    [:textarea {:style {:width "100%"}
-                :value (str (render-markdown))}]
-    [:div {:style {:text-align "center"}}
-     [:button {
-               :on-click hide-markdown-modal!} "Close"]]]])
+   `[:div {:style {:background-color ~(rgb->css (colors :white))
+                   :margin "15% auto"
+                   :width "80%"
+                   :padding "20px"
+                   :border ~(str "1px solid " (rgb->css (colors :black)))}}
+     ~@children
+     [:div {:style {:text-align "center"}}
+      [:button {
+                :on-click ~hide-modal!} "Close"]]]])
 
+(defn MarkdownModal [chart-id]
+  [Modal
+   [:textarea {:style {:width "100%"}
+               :value (str (render-markdown chart-id))}]])
 
+(defn LabelModal [dots]
+  [Modal
+   (doall
+    (for [[{:keys [color label] :as dot} i] (map vector dots (range))]
+      ^{:key i}
+      [:div {:style {:display "flex"}}
+       [:svg {:width 40
+              :height 40
+              :viewBox "0 0 10 10"
+              :style {:padding-right "1em"}}
+        [Dot {:color color
+              :position [5 5]}]]
+       [:input {:style {:width "100%"}
+                :value (str label)
+                :on-change
+                (fn [e]
+                  (let [value (-> e .-target .-value)]
+                    (swap! state update :dots
+                           (partial mapv (fn [d]
+                                           (if (= d dot)
+                                             (assoc d :label value)
+                                             d)))))
+                  (save-doc!))}]]))])
 
 (defn Chart [state]
   (let [{:keys [static?]
@@ -274,13 +341,14 @@
      (when (not static?)
        [:g
         [AddDotButton 20 20]
-        [MarkdownButton 155 17 11]])
+        [MarkdownButton 155 17 20]
+        [LabelButton 155 25 20]])
      [Hill]
      (doall
       (for [{:keys [color location label] :as dot} (:dots state)]
         ^{:key (str location color)}
         [Dot {:color color
-              ;;:label label
+              :label label
               :position (point-on-hill location)
               :on-click (if (some :moving? (:dots state))
                           place-dot!
@@ -288,8 +356,10 @@
 
 (defn Main [state]
   [:div
-   (when (:markdown-modal? state)
-     [MarkdownModal])
+   (when-let [modal (:active-modal state)]
+     (case modal
+       :markdown [MarkdownModal chart-id]
+       :labels   [LabelModal (:dots state)]))
    [Chart state]
    [:footer [:p "Hillchart.io by "
              [:a {:href "http://gaiwan.co"} "Gaiwan"]
