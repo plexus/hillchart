@@ -1,16 +1,26 @@
 (ns hillchart.firebase
   (:require ["firebase-functions" :as functions]
-            ["firebase-admin" :as admin]))
+            ["firebase-admin" :as admin]
+            [hillchart.main :as main]
+            [reagent.dom.server]
+            [clojure.string :as str]))
 
 (.initializeApp admin)
 
 (defn render-chart-svg [^js req, ^js res]
-  (let [db (.firestore admin)
-        fs-charts (.collection db "charts")
-        fs-doc (.doc fs-charts (.. req -query -chart_id))]
+  (let [doc-id (str/replace (str/replace (.-path req) ".svg" "") "/" "")
+        ^js db (.firestore admin)
+        ^js fs-charts (.collection db "charts")
+        ^js fs-doc (.doc fs-charts doc-id)]
     (.then (.get fs-doc)
            (fn [doc]
-             (.send res (pr-str (js->clj (.data doc))))))))
+             (.type res ".svg")
+             (.send res
+                    (reagent.dom.server/render-to-static-markup
+                     [main/Chart (assoc (js->clj (.data doc) :keywordize-keys true)
+                                   :screen/width 500
+                                   :screen/height 300
+                                   :static? true)]))))))
 
 
 (def cloud-functions

@@ -1,19 +1,23 @@
 (ns hillchart.main
   (:require [reagent.core :as r]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            ["jsbezier" :as jsbezier]))
 
-(when (= "" js/document.location.hash)
-  (set! js/document.location.hash (random-uuid)))
+(def ^js jsBezier #_js/jsBezier (.-jsBezier jsbezier))
 
-(def chart-id (subs js/document.location.hash 1))
+(defonce state (r/atom {:dot-button? true}))
 
-(defonce state (r/atom {}))
+(when (exists? js/document)
+  (when (= "" js/document.location.hash)
+    (set! js/document.location.hash (random-uuid)))
 
-(defn query-viewport-size []
-  {:screen/width js/document.documentElement.clientWidth
-   :screen/height js/document.documentElement.clientHeight})
+  (def chart-id (subs js/document.location.hash 1))
 
-(set! js/document.body.onresize (fn [_] (swap! state merge (query-viewport-size))))
+  (defn query-viewport-size []
+    {:screen/width js/document.documentElement.clientWidth
+     :screen/height js/document.documentElement.clientHeight})
+
+  (set! js/document.body.onresize (fn [_] (swap! state merge (query-viewport-size)))))
 
 (def hill-curve [#_M [15 70] ;; start
                  #_C [40 70] [70 30] [90 30] ;; control/control/end
@@ -64,16 +68,16 @@
   [(.-x obj) (.-y obj)])
 
 (defn nearest-point-on-curve [point curve]
-  (let [^js obj (js/jsBezier.nearestPointOnCurve (xy->js point) (xys->js curve))]
+  (let [^js obj (.nearestPointOnCurve jsBezier (xy->js point) (xys->js curve))]
     {:point (js->xy (.-point obj))
      :location (.-location obj)}))
 
 (defn distance-from-curve [point curve]
-  (let [^js obj (js/jsBezier.distanceFromCurve (xy->js point) (xys->js curve))]
+  (let [^js obj (.distanceFromCurve jsBezier (xy->js point) (xys->js curve))]
     (.-distance obj)))
 
 (defn point-on-curve [curve location]
-  (let [^js obj (js/jsBezier.pointOnCurve (xys->js curve) (- 1 location))] ;; for some reason jsBezier handles this location backwards
+  (let [^js obj (.pointOnCurve jsBezier (xys->js curve) (- 1 location))] ;; for some reason jsBezier handles this location backwards
     (js->xy obj)))
 
 (defn nearest-point-on-hill [point]
@@ -159,6 +163,12 @@
                                     (assoc dot :location (location-on-hill pos))
                                     dot)))))))
 
+(defn show-markdown-modal! []
+  (swap! state assoc :markdown-modal? true))
+
+(defn hide-markdown-modal! []
+  (swap! state dissoc :markdown-modal?))
+
 (defn Dot [{:keys [color position on-click label]}]
   (let [[x y] position]
     [:g
@@ -189,53 +199,97 @@
                   :stroke-linejoin "miter"
                   :stroke-opacity 1}}])
 
-(defn AddDotButton []
-  (let [button-x 20 button-y 20]
-    [:g
-     [:circle
-      {:cx button-x
-       :cy button-y
-       :r 5
-       :style {:fill (rgb->css (colors :red))}
-       :on-click add-new-dot!}]
+(defn AddDotButton [button-x button-y]
+  [:g
+   [:circle
+    {:cx button-x
+     :cy button-y
+     :r 5
+     :style {:fill (rgb->css (colors :red))}
+     :on-click add-new-dot!}]
 
-     [:line {:x1 (- button-x 3)
-             :x2 (+ button-x 3)
-             :y1 button-y
-             :y2 button-y
-             :style {:stroke (rgb->css (colors :black))}
-             :on-click add-new-dot!}]
-     [:line {:y1 (- button-y 3)
-             :y2 (+ button-y 3)
-             :x1 button-x
-             :x2 button-x
-             :style {:stroke (rgb->css (colors :black))}
-             :on-click add-new-dot!}]]))
+   [:line {:x1 (- button-x 3)
+           :x2 (+ button-x 3)
+           :y1 button-y
+           :y2 button-y
+           :style {:stroke (rgb->css (colors :black))}
+           :on-click add-new-dot!}]
+   [:line {:y1 (- button-y 3)
+           :y2 (+ button-y 3)
+           :x1 button-x
+           :x2 button-x
+           :style {:stroke (rgb->css (colors :black))}
+           :on-click add-new-dot!}]])
+
+(defn MarkdownButton [x y w]
+  [:g {:transform (str "translate(" x "," y ") "
+                       "scale(" (/ w 208) ")")
+       :on-click show-markdown-modal!}
+   [:rect {:width "198"
+           :height "118"
+           :x "5"
+           :y "5"
+           :ry "10"
+           :stroke-width "10"
+           :stroke (rgb->css (colors :black))
+           :fill (rgb->css (colors :white))}]
+   [:path {:d "M30 98V30h20l20 25 20-25h20v68H90V59L70 84 50 59v39zm125 0l-30-33h20V30h20v35h20z"}]])
+
+(defn render-markdown []
+  (let [origin js/document.location.origin]
+    (str "[![Hillchart](" origin "/" chart-id ".svg)](" origin "/#" chart-id ")")))
+
+(defn MarkdownModal []
+  [:div {:style {:position "fixed"
+                 :z-index 1
+                 :left 0
+                 :right 0
+                 :width "100%"
+                 :height "100%"
+                 :background-color "rgba(0,0,0,0.4)"}}
+   [:div {:style {:background-color (rgb->css (colors :white))
+                  :margin "15% auto"
+                  :width "80%"
+                  :padding "20px"
+                  :border (str "1px solid " (rgb->css (colors :black)))}}
+    [:textarea {:style {:width "100%"}
+                :value (str (render-markdown))}]
+    [:div {:style {:text-align "center"}}
+     [:button {
+               :on-click hide-markdown-modal!} "Close"]]]])
+
+
 
 (defn Chart [state]
-  (let [{:screen/keys [width height]} state]
+  (let [{:keys [static?]
+         :screen/keys [width height]} state]
     [:svg  (let [svg (atom nil)]
-             {:width width
+             {:xmlns "http://www.w3.org/2000/svg"
+              :width width
               :height (- height 100)
               :viewBox "0 0 180 80"
               :on-mouse-move (fn [e] (update-position! (svg-pos @svg e)))
               ;; :on-click place-dot!
               :ref #(reset! svg %)})
-
-     [AddDotButton]
+     (when (not static?)
+       [:g
+        [AddDotButton 20 20]
+        [MarkdownButton 155 17 11]])
      [Hill]
      (doall
-      (for [{:keys [color location moving? label] :as dot} (:dots state)]
+      (for [{:keys [color location label] :as dot} (:dots state)]
         ^{:key (str location color)}
         [Dot {:color color
               ;;:label label
               :position (point-on-hill location)
-              :on-click (if moving?
+              :on-click (if (some :moving? (:dots state))
                           place-dot!
                           (move-dot! dot))}]))]))
 
 (defn Main [state]
   [:div
+   (when (:markdown-modal? state)
+     [MarkdownModal])
    [Chart state]
    [:footer [:p "Hillchart.io by "
              [:a {:href "http://gaiwan.co"} "Gaiwan"]
@@ -247,7 +301,9 @@
        (pr-str @state) "\n"
        ]]])
 
-(r/render [(fn [] [Main @state])] (js/document.getElementById "app"))
+(when (exists? js/document)
+  (r/render [(fn [] [Main @state])] (js/document.getElementById "app"))
+  (swap! state merge (query-viewport-size)))
 
 (when (exists? js/firebase)
   (def ^js db (js/firebase.firestore))
@@ -269,5 +325,3 @@
 (defn save-doc! []
   (when (exists? fs-doc)
     (.set fs-doc (clj->js (select-keys @state [:dots])))))
-
-(swap! state merge (query-viewport-size))

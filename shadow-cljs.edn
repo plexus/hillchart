@@ -1,6 +1,18 @@
-{:source-paths ["src"]
+{:source-paths ["src" "resources"]
+ :dependencies [[reagent "0.9.0-rc1"]]
+ :dev-http     {8000 "classpath:public"}
+
  :builds
  {:functions
   {:target      :node-library
    :output-to   "functions/index.js"
-   :exports-var hillchart.firebase/cloud-functions}}}
+   :exports-var hillchart.firebase/cloud-functions
+   :release     {:compiler-options {:optimizations :simple}}
+   }
+
+  :frontend
+  {:target     :browser
+   ;;:main       hillchart.main
+   :modules {:main {:entries [hillchart.main]}}
+   :output-dir "resources/public/frontend"
+   :asset-path "frontend"}}}

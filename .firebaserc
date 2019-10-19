@@ -1,5 +1,6 @@
 {
   "projects": {
-    "production": "hillchart-91fcf"
+    "production": "hillchart-91fcf",
+    "default": "hillchart-91fcf"
   }
 }

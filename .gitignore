@@ -9,3 +9,6 @@ node_modules
 .firebase
 .shadow-cljs
 functions/index.js
+yarn-error.log
+resources/public/frontend
+functions/report*.json
