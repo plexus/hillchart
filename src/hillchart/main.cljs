@@ -361,7 +361,7 @@
        :markdown [MarkdownModal chart-id]
        :labels   [LabelModal (:dots state)]))
    [Chart state]
-   [:footer [:p "Hillchart.io by "
+   [:footer [:p "Hillchart by "
              [:a {:href "http://gaiwan.co"} "Gaiwan"]
              ", with props to Basecamp and "
              [:a {:href "https://basecamp.com/shapeup/3.4-chapter-12#work-is-like-a-hill"} "Shape Up"]
