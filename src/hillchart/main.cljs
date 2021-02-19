@@ -133,6 +133,11 @@
   (swap! state add-new-dot)
   (save-doc!))
 
+(defn remove-dot! [dot]
+  (swap! state update :dots (fn [coll]
+                              (remove #(= % dot) coll)))
+  (save-doc!))
+
 (defn place-dot [state]
   (update state :dots (partial mapv #(dissoc % :moving?))))
 
@@ -325,7 +330,11 @@
                                            (if (= d dot)
                                              (assoc d :label value)
                                              d)))))
-                  (save-doc!))}]]))])
+                  (save-doc!))}]
+       [:button
+        {:on-click #(remove-dot! dot)}
+        "Remove"]
+       ]))])
 
 (defn Chart [state]
   (let [{:keys [static?]
