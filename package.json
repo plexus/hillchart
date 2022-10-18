@@ -1,9 +1,11 @@
 {
+  "name": "hillchart",
+  "version": "1.0",
   "engines": {
     "node": "10"
   },
   "devDependencies": {
-    "firebase-tools": "^7.6.0",
+    "firebase-tools": "^9.4.0",
     "shadow-cljs": "^2.8.64"
   },
   "dependencies": {
